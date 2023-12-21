@@ -1,5 +1,4 @@
 Class: ECE 6100
-Name: Zilong Fan
 Date: 11/30/2023
 
 Writing with VIM
