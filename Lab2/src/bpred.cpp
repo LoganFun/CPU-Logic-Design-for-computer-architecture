@@ -8,6 +8,9 @@
 // Implements the branch predictor class.
 
 #include "bpred.h"
+#include <iostream>
+#include <vector>
+#include <bitset>
 
 /**
  * Construct a branch predictor with the given policy.
@@ -19,7 +22,11 @@
 BPred::BPred(BPredPolicy policy)
 {
     // TODO: Initialize member variables here.
-
+    this->policy = policy;
+    stat_num_branches = 0;
+    stat_num_mispred = 0;
+    GHR = 0;
+    PHT.resize(entries, 2);
     // As a reminder, you can declare any additional member variables you need
     // in the BPred class in bpred.h and initialize them here.
 }
@@ -38,9 +45,29 @@ BranchDirection BPred::predict(uint64_t pc)
     // TAKEN or NOT_TAKEN according to this branch predictor's policy.
 
     // Note that you do not have to handle the BPRED_PERFECT policy here; this
-    // function will not be called for that policy.
-
-    return TAKEN; // This is just a placeholder.
+    // function will not be called for that policy.    
+    if (policy == BPRED_ALWAYS_TAKEN)
+    {
+        return TAKEN;
+    }
+    else if(policy == BPRED_GSHARE)
+    {
+        //get lower 12 bits of pc
+        uint32_t lower_12_PC = pc & mask;
+        //XOR
+        xor_result = GHR ^ lower_12_PC;
+        //return section
+        if(PHT[xor_result]>1)
+        {
+            return TAKEN;
+        }
+        else
+        {
+            return NOT_TAKEN;
+        }
+    }
+    // This is just a placeholder.
+    return TAKEN;
 }
 
 
@@ -60,8 +87,40 @@ void BPred::update(uint64_t pc, BranchDirection prediction,
 {
     // TODO: Update the stat_num_branches and stat_num_mispred member variables
     // according to the prediction and resolution of the branch.
+    stat_num_branches++;
+    //std::cout<<"branches ++ "<<std::endl;
+    if(prediction != resolution) 
+    {
+        //std::cout<<"mis ++ "<<std::endl;
+        stat_num_mispred++;
+    }
 
     // TODO: Update any other internal state you may need to keep track of.
+    // Update GHR
+    if (resolution== NOT_TAKEN)
+    {
+        GHR = GHR << 1;
+        GHR = GHR & mask;
+    }
+    else
+    {
+        GHR = (GHR << 1);
+        GHR += 1;
+        GHR = GHR & mask;
+    }
+    
+    // Update PHT
+    old_state = PHT[xor_result];
+    if(resolution)
+    {
+        new_state = sat_increment(old_state,max);
+    }
+    else
+    {
+        new_state = sat_decrement(old_state);
+    }
+
+    PHT[xor_result] = new_state;
 
     // Note that you do not have to handle the BPRED_PERFECT policy here; this
     // function will not be called for that policy.

@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <iostream>
+#include <vector>
 
 /**
  * Read a single trace record from the trace file and use it to populate the
@@ -101,7 +102,6 @@ Pipeline *pipe_init(int trace_fd)
     // Initialize pipeline.
     p->trace_fd = trace_fd;
     p->halt_op_id = (uint64_t)(-1) - 3;
-    //p->halt_op_id = 100;
 
     // Allocate and initialize a branch predictor if needed.
     if (BPRED_POLICY != BPRED_PERFECT)
@@ -168,70 +168,49 @@ void pipe_print_state(Pipeline *p)
         }
         printf("\n");
     }
-    printf("\n");
+    for (uint8_t i = 0; i < PIPE_WIDTH; i++)
+    {
+        for (uint8_t latch_type = 0; latch_type < NUM_LATCH_TYPES;
+             latch_type++)
+        {
+            if (p->pipe_latch[latch_type][i].valid)
+            {
+                int dest = (p->pipe_latch[latch_type][i].trace_rec.dest_needed) ? 
+                        p->pipe_latch[latch_type][i].trace_rec.dest_reg : -1;
+                int src1 = (p->pipe_latch[latch_type][i].trace_rec.src1_needed) ? 
+                        p->pipe_latch[latch_type][i].trace_rec.src1_reg : -1;
+                int src2 = (p->pipe_latch[latch_type][i].trace_rec.src2_needed) ? 
+                        p->pipe_latch[latch_type][i].trace_rec.src2_reg : -1;
+                int cc_read = p->pipe_latch[latch_type][i].trace_rec.cc_read;
+                int cc_write = p->pipe_latch[latch_type][i].trace_rec.cc_write;
+                const char *op_type;
+                if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_ALU)
+                    op_type = "ALU";
+                else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_LD)
+                    op_type = "LD";
+                else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_ST)
+                    op_type = "ST";
+                else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_CBR)
+                    op_type = "BR";
+                else
+                    op_type = "OTHER";
 
-
-// Print row for each lane in pipeline width
-for (uint8_t i = 0; i < PIPE_WIDTH; i++)
-{
-for (uint8_t latch_type = 0; latch_type < NUM_LATCH_TYPES;
-latch_type++)
-{
-if (p->pipe_latch[latch_type][i].valid)
-{
-printf(" %6lu ",
-(unsigned long)p->pipe_latch[latch_type][i].op_id);
-}
-else
-{
-printf(" ------ ");
-}
-}
-printf("\n");
-}
-for (uint8_t i = 0; i < PIPE_WIDTH; i++)
-{
-for (uint8_t latch_type = 0; latch_type < NUM_LATCH_TYPES;
-latch_type++)
-{
-if (p->pipe_latch[latch_type][i].valid)
-{
-int dest = (p->pipe_latch[latch_type][i].trace_rec.dest_needed) ? 
-p->pipe_latch[latch_type][i].trace_rec.dest_reg : -1;
-int src1 = (p->pipe_latch[latch_type][i].trace_rec.src1_needed) ? 
-p->pipe_latch[latch_type][i].trace_rec.src1_reg : -1;
-int src2 = (p->pipe_latch[latch_type][i].trace_rec.src2_needed) ? 
-p->pipe_latch[latch_type][i].trace_rec.src2_reg : -1;
-int cc_read = p->pipe_latch[latch_type][i].trace_rec.cc_read;
-int cc_write = p->pipe_latch[latch_type][i].trace_rec.cc_write;
-const char *op_type;
-if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_ALU)
-op_type = "ALU";
-else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_LD)
-op_type = "LD";
-else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_ST)
-op_type = "ST";
-else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_CBR)
-op_type = "BR";
-else if (p->pipe_latch[latch_type][i].trace_rec.op_type == OP_OTHER)
-op_type = "OTHER";
-
-printf("(%lu : %s) dest: %d, src1: %d, src2: %d , ccread: %d, ccwrite: %d\n",
-(unsigned long)p->pipe_latch[latch_type][i].op_id,
-op_type,
-dest,
-src1,
-src2,
-cc_read,
-cc_write);
-}
- else
-{
- printf(" ------ \n");
-}
-}
- printf("\n");
- }
+                printf("(%lu : %s) dest: %d, src1: %d, src2: %d , ccread: %d, ccwrite: %d\n",
+                       (unsigned long)p->pipe_latch[latch_type][i].op_id,
+                       op_type,
+                       dest,
+                       src1,
+                       src2,
+                       cc_read,
+                       cc_write);
+            }
+            else
+            {
+                printf(" ------ \n");
+            }
+        }
+        printf("\n");
+    }
 }
 
 /**
@@ -259,7 +238,7 @@ void pipe_cycle(Pipeline *p)
     // Additionally, it means that earlier pipeline stages can know about
     // stalls triggered in later pipeline stages in the same cycle, as would be
     // the case with hardware stall signals asserted by combinational logic.
-
+    
     pipe_cycle_WB(p);
     pipe_cycle_MA(p);
     pipe_cycle_EX(p);
@@ -269,9 +248,9 @@ void pipe_cycle(Pipeline *p)
     // You can uncomment the following line to print out the pipeline state
     // after each clock cycle for debugging purposes.
     // Make sure you comment it out or remove it before you submit the lab.
+    //#ifdef DEBUG
     //pipe_print_state(p);
-    //std::cout<<std::endl;
-    
+    //#endif
 }
 
 /**
@@ -283,23 +262,28 @@ void pipe_cycle(Pipeline *p)
  * @param p the pipeline to simulate
  */
 void pipe_cycle_WB(Pipeline *p)
-{   
-    //std::cout<<"Enter WB Funciton"<<std::endl;
+{
     for (unsigned int i = 0; i < PIPE_WIDTH; i++)
     {
-        if (p->pipe_latch[MA_LATCH][i].valid==true)
-        {
-            p->stat_retired_inst++;
-            //std::cout<<"Done WB Funciton"<<std::endl;
+        if (!p->pipe_latch[MA_LATCH][i].valid) continue;
 
-            if (p->pipe_latch[MA_LATCH][i].op_id >= p->halt_op_id)
-            {
-                // Halt the pipeline if we've reached the end of the trace.
-                p->halt = true;
-            }
+        p->stat_retired_inst++;
+
+        if (p->pipe_latch[MA_LATCH][i].op_id >= p->halt_op_id)
+        {
+            // Halt the pipeline if we've reached the end of the trace.
+            p->halt = true;
         }
+
+        //check is_mispred_cbr signal
+        if (p->pipe_latch[MA_LATCH][i].is_mispred_cbr == true)
+        {
+            // conceal stall
+            p->fetch_cbr_stall = false;
+        }
+        
+
     }
-    //std::cout<<"Finish WB Funciton"<<std::endl;
 }
 
 /**
@@ -312,27 +296,11 @@ void pipe_cycle_WB(Pipeline *p)
  */
 void pipe_cycle_MA(Pipeline *p)
 {
-    //std::cout<<"Enter MA Funciton"<<std::endl;
     for (unsigned int i = 0; i < PIPE_WIDTH; i++)
     {
-        if (p->pipe_latch[EX_LATCH][i].valid==true)
-        {
-            // Copy each instruction from the EX latch to the MA latch.
-            p->pipe_latch[MA_LATCH][i] = p->pipe_latch[EX_LATCH][i];
-            p->pipe_latch[MA_LATCH][i].valid=true;
-            //std::cout<<"current MA instruction: "<<p->pipe_latch[MA_LATCH][i].op_id<<std::endl;
-            //std::cout<<"Done MA Funciton True"<<std::endl;          
-        }
-        else
-        {
-            p->pipe_latch[MA_LATCH][i].valid = false;
-            p->pipe_latch[MA_LATCH][i].trace_rec.dest_needed=0;
-            p->pipe_latch[MA_LATCH][i].trace_rec.cc_write=0;
-            //std::cout<<"Done MA Funciton False"<<std::endl;
-        }
-
+        // Copy each instruction from the EX latch to the MA latch.
+        p->pipe_latch[MA_LATCH][i] = p->pipe_latch[EX_LATCH][i];
     }
-    //std::cout<<"Finish MA Funciton"<<std::endl;
 }
 
 /**
@@ -344,30 +312,29 @@ void pipe_cycle_MA(Pipeline *p)
  * @param p the pipeline to simulate
  */
 void pipe_cycle_EX(Pipeline *p)
-{   
-
-    //std::cout<<"Enter EX Funciton"<<std::endl;
+{
     for (unsigned int i = 0; i < PIPE_WIDTH; i++)
     {
-        //std::cout<<"EX stage stall signal: "<<p->pipe_latch[ID_LATCH][i].stall<<std::endl;
-        //detect whether there is a stall signal
-        if(p->pipe_latch[ID_LATCH][i].stall==0||p->stat_num_cycle<4)
-        {
-            // Copy each instruction from the ID latch to the EX latch.
-            p->pipe_latch[EX_LATCH][i].valid = true;
-            p->pipe_latch[EX_LATCH][i] = p->pipe_latch[ID_LATCH][i];  
-            //std::cout<<"Done EX Funciton True"<<std::endl;          
+        // Copy each instruction from the ID latch to the EX latch.
+        p->pipe_latch[EX_LATCH][i] = p->pipe_latch[ID_LATCH][i];
+
+        /*
+        ============================{ A1 }============================
+        I have chosen to only set the stall bit of ID. As such, for instructions 
+        to be NOPs in in this implementation our EX stage checks the stall bit
+        set by ID. If stall is set, then we convert it to a NOP. I primarily chose 
+        doing it this way because it meant less lines of code.
+
+        The alternative to setting both the valid bit and the stall bit does work, but
+        I personally don't like it since 1) instead of one line of code each time you
+        need to stall it's two and 2) the output would show that you have a NOP in
+        the ID latch which doesn't make sense since ID can only get stalled in this
+        portion of the simulation, not squashed.
+        */        
+        if (p->pipe_latch[EX_LATCH][i].stall) {
+            p->pipe_latch[EX_LATCH][i].valid = 0;
         }
-        else 
-        {   
-            p->pipe_latch[EX_LATCH][i].valid = false; 
-            p->pipe_latch[EX_LATCH][i].trace_rec.dest_needed=0;
-            p->pipe_latch[EX_LATCH][i].trace_rec.cc_write=0;
-            //std::cout<<"Done EX Funciton False"<<std::endl;
-        }
-        
     }
-    //std::cout<<"Finish EX Funciton"<<std::endl;
 }
 
 /**
@@ -379,261 +346,241 @@ void pipe_cycle_EX(Pipeline *p)
  * @param p the pipeline to simulate
  */
 void pipe_cycle_ID(Pipeline *p)
-{   
-    //int ID_Hazard[PIPE_WIDTH];
-    //uint64_t hazard_opid = 0;
-    //ENABLE_EXE_FWD=1;
-    //ENABLE_MEM_FWD=1; 
-    uint64_t EX_Final_op_id=0;
+{
+    /*
+    ============================{ A1 }============================
+    We have to unconditionally move over all pipeline stages before
+    we do any stall logic checking. Consider this case...
+    IF:   ID:   EX:   MA:
+    7     5     3     1
+    8     6     4     2
 
-    //Enter ID Function once
-    //std::cout<<"Enter ID Funciton"<<std::endl;
-
-    //For all the lines to test
-    for (unsigned int i = 0; i < PIPE_WIDTH; i++)
-    {   
-        //Initial the pipeline
-        if(p->stat_num_cycle<3)
-        {   
-            //std::cout<<"Initial Pipeline Stage"<<std::endl;
-            p->pipe_latch[ID_LATCH][i] = p->pipe_latch[IF_LATCH][i];
-            //std::cout<<"Done ID Funciton Initialization"<<std::endl;
+    On the next cycle, when we reach this code, it's entirely possible
+    to have this configuration:
+    IF:   ID:   EX:   MA:
+    7     7     5     3
+    8     6     4     2    
+    
+    This is incorrect since we havn't stalled yet, so 7 & 8 should always
+    be together.
+    */  
+    for (unsigned int i = 0; i < PIPE_WIDTH; i++) {
+        // Copy each instruction from the IF latch to the ID latch.
+        p->pipe_latch[ID_LATCH][i] = p->pipe_latch[IF_LATCH][i];
+        
+        // Check whether there is a bubble in IF 
+        if(p->fetch_cbr_stall == true)
+        {
+            continue;
         }
+    }
 
-        //Detect harzard in ID stage After Input
-        else 
-        {   
-            if(p->pipe_latch[ID_LATCH][i].stall == 0)
-            {   
-                p->pipe_latch[ID_LATCH][i] = p->pipe_latch[IF_LATCH][i];
-            }
+    /*
+    ============================{ A1 }============================
+    Iterate through each of our pipelines and check for RAW hazards
+    */  
+    for (unsigned int i = 0; i < PIPE_WIDTH; i++) {
+        /*
+        ============================{ A3 }============================
+        Create index trackers for oldest dependency of each type.
 
-            //Stall Signal Initialization
-            p->pipe_latch[ID_LATCH][i].stall = 0;
-            EX_Final_op_id=0;
-            for (unsigned int k = 0; k < PIPE_WIDTH; k++)
-            {
-                //ID_Hazard[k] = 0;
-            }
-            //hazard_opid = 0;
-            
-            //Test all the pipelines
-            for(unsigned int j = 0; j<PIPE_WIDTH; j++)
-            {
-                if(p->pipe_latch[ID_LATCH][i].trace_rec.src1_needed==1)
-                {
-                    //Reg hazard between MA stage
-                    if(p->pipe_latch[MA_LATCH][j].trace_rec.dest_needed==1)
-                    {
-                        if(p->pipe_latch[ID_LATCH][i].trace_rec.src1_reg==
-                        p->pipe_latch[MA_LATCH][j].trace_rec.dest_reg                       
-                        )
-                        {
-                            
-                            // std::cout<<"Done ID Funciton"<<std::endl;
-                            if(ENABLE_MEM_FWD==0)
-                            {
-                                p->pipe_latch[ID_LATCH][i].stall = 1;
-                                //std::cout<<"Hazard 1 scr1 MA stage"<<std::endl;
-                            }
-                            else
-                            {
-                                p->pipe_latch[ID_LATCH][i].stall = 0;
-                            }                                
-                        }
-                        else if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_needed==1)
-                        {
-                            if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_reg==
-                            p->pipe_latch[MA_LATCH][j].trace_rec.dest_reg )
-                            {
-                                //std::cout<<"Hazard 1 scr2 MA stage"<<std::endl;
-                                //std::cout<<"Done ID Funciton"<<std::endl;
-                                if(ENABLE_MEM_FWD==0)
-                                {
-                                    p->pipe_latch[ID_LATCH][i].stall = 1;
-                                    //std::cout<<"Hazard 1 scr2 MA stage"<<std::endl;
-                                }
-                                else
-                                {
-                                    p->pipe_latch[ID_LATCH][i].stall = 0;
-                                }
-                            }
-                        }
-                    }
+        Initialize to PIPE_WIDTH since no index should ever equal our 
+        superscalar width. If we never change from PIPE_WIDTH, there were no 
+        dependencies of that type on pipeline i's ID_LATCH in the EX phase.
+        */  
+        unsigned int oldest_src1_j = PIPE_WIDTH;
+        unsigned int oldest_src2_j = PIPE_WIDTH;
+        unsigned int oldest_cc_j = PIPE_WIDTH;
 
-                    //Reg hazard between EX stage
-                    if(p->pipe_latch[EX_LATCH][j].trace_rec.dest_needed==1)
-                    {
-                        if(p->pipe_latch[ID_LATCH][i].trace_rec.src1_reg==
-                        p->pipe_latch[EX_LATCH][j].trace_rec.dest_reg                       
-                        )
-                        {   
-                            if (ENABLE_EXE_FWD==0)
-                            {
-                                p->pipe_latch[ID_LATCH][i].stall = 1;
-                            }
-                            else 
-                            {
-                                if (EX_Final_op_id < p->pipe_latch[EX_LATCH][i].op_id)
-                                {
-                                    EX_Final_op_id = p->pipe_latch[EX_LATCH][i].op_id ;
-                                    
-                                }
-                                p->pipe_latch[ID_LATCH][i].stall = 1;
-                            }
-                        }
-                        else if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_needed)
-                        {
-                            if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_reg==
-                            p->pipe_latch[EX_LATCH][j].trace_rec.dest_reg )
-                            {
-                                if (ENABLE_EXE_FWD==0)
-                                {
-                                    p->pipe_latch[ID_LATCH][i].stall = 1;
-                                }
-                                else 
-                                {
-                                    if (EX_Final_op_id < p->pipe_latch[EX_LATCH][i].op_id)
-                                    {
-                                        EX_Final_op_id = p->pipe_latch[EX_LATCH][i].op_id ;
-                                        
-                                    }
-                                    p->pipe_latch[ID_LATCH][i].stall = 1;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                //CC hazard detection
-                if(p->pipe_latch[ID_LATCH][i].trace_rec.cc_read==1)
-                {
-                    if(p->pipe_latch[MA_LATCH][j].trace_rec.cc_write==1)
-                    {
-                        
-                        //std::cout<<"Done ID Funciton"<<std::endl;
-                        if(ENABLE_MEM_FWD==0)
-                        {
-                            //std::cout<<"CC Hazard 2 MA stage"<<std::endl;
-                            p->pipe_latch[ID_LATCH][i].stall = 1;
-                        }
-                        else
-                            p->pipe_latch[ID_LATCH][i].stall = 0;
-                    }   
-
-                    if(p->pipe_latch[EX_LATCH][j].trace_rec.cc_write==1)
-                    {
-                        //std::cout<<"CC Hazard 2 EX stage"<<std::endl;
-                        //std::cout<<"Done ID Funciton"<<std::endl;
-                        if (ENABLE_EXE_FWD==0)
-                        {
-                            p->pipe_latch[ID_LATCH][i].stall = 1;
-                        }                        
-                        else
-                        {
-                            if (EX_Final_op_id < p->pipe_latch[EX_LATCH][i].op_id)
-                            {
-                                EX_Final_op_id = p->pipe_latch[EX_LATCH][i].op_id;
-                            }
-                            p->pipe_latch[ID_LATCH][i].stall = 1;
-                        }
-                    }    
+        /*
+        ============================{ A2 }============================
+        Inner-for loop to iterate through each of our pipelines again.
+        Allows you to check for, as an example, RAW hazards between the ID
+        stage of pipeline 0 and the EX stage of pipeline 1.
+        */ 
+        for (unsigned int j = 0; j < PIPE_WIDTH; j++) {
+            if (ENABLE_MEM_FWD) {
+                /*
+                ============================{ A3 }============================
+                You can always forward from the ME stage, so if forwarding is
+                enabled then no need to check the MA_LATCH
+                */  
+            } else {
+                /*
+                ============================{ A1 }============================
+                Check for RAW hazards in the MA latch. Generalize to a function
+                call for nicer-looking code.
+                */ 
+                if (has_raw_hazards(p, i, j, MA_LATCH)) {
+                    p->pipe_latch[ID_LATCH][i].stall = 1;
                 }
             }
-        }
 
-        //EXE
-        if (ENABLE_EXE_FWD && (EX_Final_op_id!=0))
-        {            
-            for(unsigned int j = 0; j < PIPE_WIDTH; j++)
-            {
-                if (p->pipe_latch[EX_LATCH][j].op_id==EX_Final_op_id)
+            if (ENABLE_EXE_FWD) {
+                /*
+                ============================{ A3 }============================
+                We only have a load-use hazard if the oldest (later in program trace) 
+                instruction for any of the hazard-causing dependencies (src1, src2, cc)
+                is caused by an LD instruction. Therefore, iterate through all the EX 
+                stages and track the oldest hazard-causing pipeline index for src1, src2, 
+                and cc. If any of these are an LD instruction, then we have a load-use hazard.
+                */
+                int output = has_raw_hazards(p, i, j, EX_LATCH);
+
+                // Check the bits of the output for each type of dependency
+                // See the has_raw_hazards docstring for details
+                int cc_dependency = output >> 2 & 1;
+                int src2_dependency = output >> 1 & 1;
+                int src1_dependency = output & 1;
+
+                // Checking if we can update src1 dependency
+                if (src1_dependency && 
+                    (oldest_src1_j == PIPE_WIDTH || p->pipe_latch[EX_LATCH][j].op_id > p->pipe_latch[EX_LATCH][oldest_src1_j].op_id)) 
                 {
-                    if (p->pipe_latch[EX_LATCH][j].trace_rec.op_type != OP_LD
-                    )
-                    {
-                        //std::cout<<"Optype Stall Cancel"<<std::endl;
-                        p->pipe_latch[ID_LATCH][i].stall = 0;
-                    }
-                }              
+                    oldest_src1_j = j;
+                }
+
+                // Checking we can update src2 dependency
+                if (src2_dependency && 
+                    (oldest_src2_j == PIPE_WIDTH || p->pipe_latch[EX_LATCH][j].op_id > p->pipe_latch[EX_LATCH][oldest_src2_j].op_id)) 
+                {
+                    oldest_src2_j = j;
+                }
+
+                // Checking if we can update cc dependency
+                if (cc_dependency &&
+                    (oldest_cc_j == PIPE_WIDTH || p->pipe_latch[EX_LATCH][j].op_id > p->pipe_latch[EX_LATCH][oldest_cc_j].op_id)) 
+                {
+                    oldest_cc_j = j;
+                }
+            } else {
+                /*
+                ============================{ A1 }============================
+                Check for RAW hazards in the EX latch. Generalize to a function
+                call for nicer-looking code.
+                */ 
+                if (has_raw_hazards(p, i, j, EX_LATCH)) {
+                    p->pipe_latch[ID_LATCH][i].stall = 1;
+                }
+            }
+            /*
+            ============================{ A2 }============================
+            Check for RAW hazards in the ID latch on instructions which 
+            come earlier in the program trace. For example...
+            IF:   ID:   EX:   MA:
+            7     5     3     1
+            8     6     4     2 
+
+            6 can depend on 1, 2, 3, or 4, but can also depend on 5.
+            5 can depend on 1, 2, 3, or 4, but not 6 because it comes later.
+
+            Therefore, we need to check for RAW hazards in the ID stage ONLY
+            if the instruction comes earlier in the program trace.
+            */ 
+            if (p->pipe_latch[ID_LATCH][i].op_id > p->pipe_latch[ID_LATCH][j].op_id && 
+                has_raw_hazards(p, i, j, ID_LATCH)) 
+            {
+                p->pipe_latch[ID_LATCH][i].stall = 1;
+            }
+        }
+        /*
+        ============================{ A3 }============================
+        After iterating through EX in each pipeline j to check if there is a RAW dependency
+        on pipeline i's ID, check if any of the oldest (latest in the program trace) 
+        hazard-causing instructions for each type (src1, src2, cc) are a LD. If any of them 
+        are a LD, we have to stall ID.
+
+        Ensure that our indices were actually updated; they were set to PIPE_WIDTH by default.
+        */
+        if (ENABLE_EXE_FWD) {
+            if ((oldest_src1_j != PIPE_WIDTH && p->pipe_latch[EX_LATCH][oldest_src1_j].trace_rec.op_type == OP_LD) ||
+                (oldest_src2_j != PIPE_WIDTH && p->pipe_latch[EX_LATCH][oldest_src2_j].trace_rec.op_type == OP_LD) ||
+                (oldest_cc_j != PIPE_WIDTH && p->pipe_latch[EX_LATCH][oldest_cc_j].trace_rec.op_type == OP_LD)) {
+                p->pipe_latch[ID_LATCH][i].stall = 1;
             }
         }
     }
 
-    for (unsigned int i = 0; i < PIPE_WIDTH; i++)
-    {
-        for(unsigned int j = 0; j < PIPE_WIDTH; j++)
-        {  
-               //Hazard between ID
-                if(i!=j)
-                {
-                    
-                    if(p->pipe_latch[ID_LATCH][i].op_id > p->pipe_latch[ID_LATCH][j].op_id)
-                    {
-                        //dest hazard
-                        if (p->pipe_latch[ID_LATCH][j].trace_rec.dest_needed==1)
-                        {   
-                            if(p->pipe_latch[ID_LATCH][i].trace_rec.src1_needed==1){
-                                if(p->pipe_latch[ID_LATCH][i].trace_rec.src1_reg==
-                                p->pipe_latch[ID_LATCH][j].trace_rec.dest_reg)    
-                                {
-                                    p->pipe_latch[ID_LATCH][i].stall=1;
-                                    //ID_Hazard[j]=1;
-                                    //std::cout<<"ID src1 Hazard ID stage"<<std::endl;
-                                }
-                            }     
+    /*
+    ============================{ A2 }============================
+    To maintain the in-order property of the pipeline, if we ever have
+    a stalled instruction in ID then we must stall all later instructions
+    in the program trace. For instance...
+    IF:   ID:   EX:   MA:
+    7     5     3     1
+    8     6     4     2
 
-                            if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_needed==1){
-                                if(p->pipe_latch[ID_LATCH][i].trace_rec.src2_reg==
-                                p->pipe_latch[ID_LATCH][j].trace_rec.dest_reg)    
-                                {
-                                    p->pipe_latch[ID_LATCH][i].stall=1;
-                                    //ID_Hazard[j]=1;
-                                    //std::cout<<"ID src2 Hazard ID stage"<<std::endl;
-                                }
-                            }                                                
-                        }
-                        
-                        
-                        //cc hazard
-                        if (p->pipe_latch[ID_LATCH][i].trace_rec.cc_read==1)
-                        {
-                            if(p->pipe_latch[ID_LATCH][j].trace_rec.cc_write==1)
-                            {
-                                
-                                p->pipe_latch[ID_LATCH][i].stall=1;
-                                //ID_Hazard[j]=1;
-                                //std::cout<<"ID cc Hazard ID stage"<<std::endl;
-                                //std::cout<<p->pipe_latch[ID_LATCH][i].op_id<<std::endl;
-                                //std::cout<<p->pipe_latch[ID_LATCH][j].op_id<<std::endl;
-                            }
-                        }
-                        
-                    }
-                }
+    If 5 is stalled here and we allow 6 to move, then we'd get...
+    IF:   ID:   EX:   MA:
+    7     5     ---   3 
+    9     8     6     4 
+
+    This would mean 6 to finishes before 5, which is not allowed. Therefore,
+    we should instead also stall 6 regardless of there being a RAW hazard...
+    IF:   ID:   EX:   MA:
+    7     5     ---   3
+    8     6     ---   4
+    */ 
+    for (unsigned int i = 0; i < PIPE_WIDTH; i++) {
+        if (!p->pipe_latch[ID_LATCH][i].stall) continue;
+
+        for (unsigned int j = 0; j < PIPE_WIDTH; j++) {
+            if (p->pipe_latch[ID_LATCH][j].op_id > p->pipe_latch[ID_LATCH][i].op_id) {
+                p->pipe_latch[ID_LATCH][j].stall = 1;
+            }
         }
     }
+}
 
-    for (unsigned int i = 0; i < PIPE_WIDTH; i++)
-    {
-        for(unsigned int j = 0; j < PIPE_WIDTH; j++)
-        {   
-            if(i!=j)
-            {
-                //youger instruction stall
-                if(p->pipe_latch[ID_LATCH][j].stall==1)
-                {
-                    if (p->pipe_latch[ID_LATCH][i].op_id > p->pipe_latch[ID_LATCH][j].op_id)
-                    {
-                        p->pipe_latch[ID_LATCH][i].stall=1;
-                        //std::cout<<"ID Hazard Youger Stall"<<std::endl;
-                    }
-                    
-                }
-            }
-        }      
+/**
+ * Helper method for pipe_cycle_ID.
+ * 
+ * Using the passed in pipeline, checks the ID_LATCH of i &
+ * the latch of j to see if there are any src1, src2, or cc
+ * RAW hazards.
+ * 
+ * Reurns an bit-vector (set as an int) based on the type of hazard (for A3 logic).
+ * The bits in the vector are as follows:
+ * {31 - 3}: Unused
+ * {2}: cc dependency
+ * {1}: src2 dependency
+ * {0}: src1 dependency
+ * 
+ * @param p the pipeline to simulate
+ * @param i the pipeline index of the ID_LATCH to compare to
+ * @param j the pipeline index of the @latch to compare with
+ * @param latch the latch of the pipeline to compare with
+ * @return bit-vector as an int where the first 3 bits indicate the type of dependency/dependencies
+ */
+int has_raw_hazards(Pipeline *p, unsigned int i, unsigned int j, LatchType latch) {
+    if (!p->pipe_latch[latch][j].valid) return 0;
+
+    int output = 0;
+
+    uint8_t src1_needed = p->pipe_latch[ID_LATCH][i].trace_rec.src1_needed;
+    uint8_t src2_needed = p->pipe_latch[ID_LATCH][i].trace_rec.src2_needed;
+    uint8_t dest_needed = p->pipe_latch[latch][j].trace_rec.dest_needed;
+
+    uint8_t src1_reg = p->pipe_latch[ID_LATCH][i].trace_rec.src1_reg;
+    uint8_t src2_reg = p->pipe_latch[ID_LATCH][i].trace_rec.src2_reg;
+    uint8_t dest_reg = p->pipe_latch[latch][j].trace_rec.dest_reg;
+
+    uint8_t cc_read = p->pipe_latch[ID_LATCH][i].trace_rec.cc_read;
+    uint8_t cc_write = p->pipe_latch[latch][j].trace_rec.cc_write;
+
+    if (src1_needed && dest_needed && src1_reg == dest_reg) {
+        output |= 1;
     }
-    //std::cout<<"Finish ID Funciton"<<std::endl;
+
+    if (src2_needed && dest_needed && src2_reg == dest_reg) {
+        output |= 2;
+    }
+
+    if (cc_read && cc_write) {
+        output |= 4;
+    }
+
+    return output;
 }
 
 /**
@@ -646,67 +593,43 @@ void pipe_cycle_ID(Pipeline *p)
  */
 void pipe_cycle_IF(Pipeline *p)
 {
-    //std::cout<<"Enter IF Funciton"<<std::endl;
     for (unsigned int i = 0; i < PIPE_WIDTH; i++)
     {
-        //std::cout<<"Detected ID Stall Signal: "<<p->pipe_latch[ID_LATCH][i].stall<<std::endl;
-
-        if(p->pipe_latch[ID_LATCH][i].stall == 0)
+        // If ID is stalled, do not fetch the next instruction
+        if (p->pipe_latch[ID_LATCH][i].stall) 
         {
-            if(p->pipe_latch[IF_LATCH][i].stall==0)
-            {
-                // Read an instruction from the trace file.
-                PipelineLatch fetch_op;
-                pipe_get_fetch_op(p, &fetch_op);
-
-                // Handle branch (mis)prediction.
-                if (BPRED_POLICY != BPRED_PERFECT)
-                {
-                    pipe_check_bpred(p, &fetch_op);
-                }
-
-                // Copy the instruction to the IF latch.
-                p->pipe_latch[IF_LATCH][i] = fetch_op;
-
-                //std::cout<<"Done IF Funciton with both 0 stall signal"<<std::endl;
-            }
-
-            p->pipe_latch[IF_LATCH][i].stall=0;
-
+            //std::cout<<"ID stall Signal detected at IF Stage"<<std::endl;
+            continue;
         }
-        else 
+        //If IF is stalled by wrong prediction
+        if (p->fetch_cbr_stall == true)
+        {
+            //std::cout<<"CBR Stall Signal detected at IF Stage"<<std::endl;
+            p->pipe_latch[IF_LATCH][i].valid = false;
+            continue;
+        }
+        else
+        {
+            p->pipe_latch[IF_LATCH][i].valid = true;
+        }
+
+        //std::cout<<"Normal Fetch at IF Stage"<<std::endl;
+
+        // Read an instruction from the trace file.
+        PipelineLatch fetch_op;
+        pipe_get_fetch_op(p, &fetch_op);
+
+        // Handle branch (mis)prediction.
+        if (BPRED_POLICY != BPRED_PERFECT)
         {   
-            if(p->pipe_latch[IF_LATCH][i].stall == 1)
-            {
-                
-            }
-            else
-            {
-
-                // Read an instruction from the trace file.
-                PipelineLatch fetch_op;
-                pipe_get_fetch_op(p, &fetch_op);
-
-                // Handle branch (mis)prediction.
-                if (BPRED_POLICY != BPRED_PERFECT)
-                {
-                    pipe_check_bpred(p, &fetch_op);
-                }
-
-                // Copy the instruction to the IF latch.
-                p->pipe_latch[IF_LATCH][i] = fetch_op;
-                
-                //std::cout<<"Done IF Funciton"<<std::endl;
-
-            }
-
-            p->pipe_latch[IF_LATCH][i].stall = 1;
-
+            //std::cout<<"Normal predict check at IF Stage"<<std::endl;
+            pipe_check_bpred(p, &fetch_op);
         }
-        //std::cout<<"IF Stall Signal: "<<p->pipe_latch[IF_LATCH][i].stall<<std::endl;
+
+        // Copy the instruction to the IF latch.
+        p->pipe_latch[IF_LATCH][i] = fetch_op;
+        //printf("Fetching %lu!\n", p->pipe_latch[IF_LATCH][i].op_id);
     }
-    
-    //std::cout<<"Finish IF Funciton"<<std::endl;
 }
 
 /**
@@ -721,14 +644,35 @@ void pipe_cycle_IF(Pipeline *p)
  */
 void pipe_check_bpred(Pipeline *p, PipelineLatch *fetch_op)
 {
-    // TODO: For a conditional branch instruction, get a prediction from the
-    // branch predictor.
+    // Check whether it is OP_CBR first
+    if (fetch_op->trace_rec.op_type == OP_CBR)
+    {
+        //std::cout<<"Predict at IF stage"<<std::endl;
+        // TODO: For a conditional branch instruction, get a prediction from the
+        // branch predictor.
+      
+        BranchDirection takenChoice;
 
-    // TODO: If the branch predictor mispredicted, mark the fetch_op
-    // accordingly.
+        takenChoice = p->b_pred->predict(fetch_op->trace_rec.inst_addr);
+        
+        // TODO: If the branch predictor mispredicted, mark the fetch_op
+        // accordingly.
+        //std::cout<<"Check whether mis at IF stage"<<std::endl;                 
+        if (takenChoice != static_cast<BranchDirection>(fetch_op->trace_rec.br_dir))
+        {
+            //std::cout<<"Find mis at prediction"<<std::endl; 
+            fetch_op->is_mispred_cbr = true;
+            p->fetch_cbr_stall = true;
+        }        
 
-    // TODO: Immediately update the branch predictor.
+        // TODO: Immediately update the branch predictor.
+        //void BPred::update(uint64_t pc, BranchDirection prediction, BranchDirection resolution)
+        //std::cout<<"Update at IF stage"<<std::endl; 
+        p->b_pred->update(fetch_op->trace_rec.inst_addr, takenChoice, static_cast<BranchDirection>(fetch_op->trace_rec.br_dir));
 
-    // TODO: If needed, stall the IF stage by setting the flag
-    // p->fetch_cbr_stall.
+        // TODO: If needed, stall the IF stage by setting the flag
+        // p->fetch_cbr_stall.
+
+    }
+
 }
