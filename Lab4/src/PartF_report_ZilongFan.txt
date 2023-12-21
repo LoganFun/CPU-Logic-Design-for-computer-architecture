@@ -1,0 +1,21 @@
+Class: ECE 6100
+Name: Zilong Fan
+Date: 11/30/2023
+
+Writing with VIM
+
+Dynamic Logic:
+
+1. Record each core hit and miss history
+
+2. Don't use the default num of ways, declare one by you self in cache.cpp
+
+3. Also Empty First
+
+4. Based on the hit history of each core, change the num of ways.
+
+5. if (num_Hit_core0 > 1.1*num_Hit_core1 && num_Hit_core0 < 1.2*num_Hit_core1): slightly increase num_ways_core0. Next, if num_Hit_core0 >= 1.2*num_Hit_core1 &&num_Hit_core0 < 1.3*num_Hit_core1 increase num_ways_case0 larger than first case. 
+
+6. Inverse, hit_core0 < C * hit_core1, decrease the num_ways_core0 step by step. 
+
+:wq
